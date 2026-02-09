@@ -1,0 +1,92 @@
+tmux
+
+cat *.fastq.gz > BARCODE1_merged.fastq.gz
+
+gzip -t BARCODE1_merged.fastq.gz && echo "Merge successful and file is valid!"
+
+zcat BARCODE1_merged.fastq.gz | awk '{if(NR%4==2) {count++; sum+=length($0)}} END {print "Average Read Length: "sum/count}'
+
+zcat BARCODE1_merged.fastq.gz | \
+awk 'BEGIN {OFS="\n"} {header=$0; getline seq; getline sep; getline qual; if (length(seq) >= 500) print header, seq, sep, qual}' \
+> BARCODE1_filtered.fastq
+
+gzip BARCODE1_filtered.fastq
+
+ls -lh BARCODE1_filtered.fastq.gz
+
+zcat BARCODE1_filtered.fastq.gz | awk 'END{print "Reads:", NR/4}'
+
+zcat BARCODE1_filtered.fastq.gz | awk 'NR%4==2{l=length($0); sum+=l; if(min==0||l<min)min=l; if(l>max)max=l; n++} END{print "Reads:",n,"Min:",min,"Max:",max,"Mean:",sum/n}'
+
+NanoPlot --version
+which NanoPlot
+
+mkdir -p nanoplot_BARCODE1_filtered
+
+NanoPlot \
+  --fastq BARCODE1_filtered.fastq.gz \
+  --outdir nanoplot_BARCODE1_filtered \
+  --threads 8 \
+  --loglength \
+  --title "BARCODE1 filtered >=500"
+
+##############################################
+Reads: 1,958,730
+Total bases: 1,114,868,511 (~1.11 Gb)
+Mean length: 569 bp (median 551 bp)
+N50: 556 bp
+Mean Q: 14.4 (median 15.2)
+>Q10: 97.2% of reads
+##############################################
+
+mkdir -p nanoplot_BARCODE1_merged2
+NanoPlot \
+  --fastq BARCODE1_merged.fastq.gz \
+  --outdir nanoplot_BARCODE1_merged2 \
+  --threads 8 \
+  --loglength \
+  --title "BARCODE1 merged (raw)"
+
+##############################################
+* Reads: 5,359,099
+* Total bases: 2,499,735,722 (~2.50 Gb)
+* Mean length: 466 bp (median 468 bp)
+* N50: 487 bp
+* Mean Q: 13.9 (median 14.8)
+* >Q10: 95.7%
+
+Comparing raw → filtered:
+* You removed ~3.4 million reads and ~1.39 Gb of sequence.
+* Even after filtering, the lengths are still clustered just above the cutoff, meaning the underlying library is short-fragment heavy.
+✅ Conclusion: Nothing “wrong” with the FASTQ. The key issue is fragment size / library characteristics.
+
+##############################################
+
+zcat BARCODE1_merged.fastq.gz | \
+awk 'BEGIN{OFS="\n"}{h=$0; getline s; getline p; getline q; if(length(s)>=1000) print h,s,p,q}' | \
+gzip -c > BARCODE1_1kb.fastq.gz
+
+zcat BARCODE1_1kb.fastq.gz | awk 'NR%4==2{b+=length($0); n++} END{print "reads",n,"bases",b}'
+
+zcat BARCODE1_merged.fastq.gz | \
+awk 'BEGIN{OFS="\n"}{h=$0; getline s; getline p; getline q; if(length(s)>=2000) print h,s,p,q}' | \
+gzip -c > BARCODE1_2kb.fastq.gz
+
+zcat BARCODE1_2kb.fastq.gz | awk 'NR%4==2{b+=length($0); n++} END{print "reads",n,"bases",b}'
+
+##############################################
+
+What your ≥1 kb / ≥2 kb subsets prove
+From your own counts:
+* ≥1 kb: 2,170 reads, 9,955,623 bases (~10 Mb)
+* ≥2 kb: 1,828 reads, 9,489,597 bases (~9.5 Mb)
+Compare that to your raw dataset (~2.50 Gb total bases from the NanoPlot raw report). That means:
+* Only about 0.4% of your total bases are in reads ≥1 kb (≈10 Mb / 2,500 Mb).
+* And almost all of those “long-ish” reads are actually ≥2 kb (since ≥2 kb is ~9.5 Mb).
+Bottom line: this is not a typical ONT long-read WGS dataset. It’s overwhelmingly short-fragment.
+
+I.E Use all your ≥500 bp filtered file for this (it’s your cleanest set):
+
+##############################################
+
+
